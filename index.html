@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SCP × ceph/s3-tests — daily compatibility</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         margin: 0; padding: 20px 28px; background: #fafbfc; color: #1f2328; }
+  h1, h2 { margin: 18px 0 8px; }
+  .meta { color: #57606a; font-size: 13px; }
+  .kpis { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
+  .kpi { background: white; border: 1px solid #d0d7de; border-radius: 8px;
+         padding: 12px 16px; min-width: 140px; }
+  .kpi .v { font-size: 24px; font-weight: 600; }
+  .kpi .l { color: #57606a; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .pass { color: #1a7f37; }
+  .fail { color: #cf222e; }
+  .skip { color: #9a6700; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card { background: white; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #f6f8fa; position: sticky; top: 0; }
+  input[type=text] { padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 4px; width: 320px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+  .badge.pass { background: #dafbe1; color: #1a7f37; }
+  .badge.fail { background: #ffebe9; color: #cf222e; }
+  .badge.skip { background: #fff8c5; color: #9a6700; }
+  .badge.error { background: #ffebe9; color: #cf222e; }
+  .small { font-size: 12px; color: #57606a; }
+  .scroll { max-height: 340px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>SCP × ceph/s3-tests — daily compatibility</h1>
+<p class="meta">
+  Endpoint: <code>object-store.kr-west1.e.samsungsdscloud.com</code> ·
+  Suite: <a href="https://github.com/ceph/s3-tests">ceph/s3-tests</a> ·
+  Generated <span id="gen-at">…</span> UTC.
+</p>
+
+<div class="kpis" id="kpis"></div>
+
+<h2>Daily counts</h2>
+<div class="card"><canvas id="ts" height="120"></canvas></div>
+
+<h2>Failure categories (latest run)</h2>
+<div class="card"><canvas id="cats" height="200"></canvas></div>
+
+<h2>Diff vs previous run</h2>
+<div class="grid">
+  <div class="card">
+    <strong id="new-fails-title">New failures</strong>
+    <div class="scroll"><table id="new-fails"><thead><tr><th>test</th><th>category</th><th>message</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <strong id="fixed-title">Newly fixed</strong>
+    <div class="scroll"><table id="fixed"><thead><tr><th>test</th><th>previous category</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</div>
+
+<h2>Per-test history</h2>
+<div class="card">
+  <input type="text" id="filter" placeholder="Filter test name…" />
+  <span class="small" id="filter-count"></span>
+  <div class="scroll">
+    <table id="history"><thead><tr><th>test</th><th>history (oldest → newest)</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<p class="meta" style="margin-top: 28px;">
+  Source: <a id="source-link" href="#">kyle-agent/scp-pkb-bench</a> (private). Page auto-built daily.
+</p>
+
+<script>
+async function main() {
+  const data = await fetch("data.json").then(r => r.json());
+  const runs = data.runs;
+  document.getElementById("gen-at").textContent = data.generated_at;
+  if (data.source_url) document.getElementById("source-link").href = data.source_url;
+
+  const latest = runs[runs.length - 1];
+  const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
+
+  // KPIs
+  const kpiHost = document.getElementById("kpis");
+  const kpi = (label, val, cls = "") => {
+    const d = document.createElement("div"); d.className = "kpi";
+    d.innerHTML = `<div class="v ${cls}">${val}</div><div class="l">${label}</div>`;
+    return d;
+  };
+  kpiHost.append(
+    kpi("Latest date", latest.date),
+    kpi("Passed", latest.passed, "pass"),
+    kpi("Failed", latest.failed, "fail"),
+    kpi("Skipped", latest.skipped, "skip"),
+    kpi("Wall (s)", Math.round(latest.wall_sec)),
+    kpi("Pass %", ((latest.passed * 100) / latest.total).toFixed(1) + "%"),
+  );
+
+  // Time series
+  const labels = runs.map(r => r.date);
+  new Chart(document.getElementById("ts"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "passed", data: runs.map(r => r.passed), borderColor: "#1a7f37", tension: .2 },
+        { label: "failed", data: runs.map(r => r.failed), borderColor: "#cf222e", tension: .2 },
+        { label: "skipped", data: runs.map(r => r.skipped), borderColor: "#9a6700", tension: .2 },
+      ],
+    },
+    options: { responsive: true, animation: false },
+  });
+
+  // Categories
+  const cats = latest.categories || {};
+  const catEntries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  new Chart(document.getElementById("cats"), {
+    type: "bar",
+    data: {
+      labels: catEntries.map(e => e[0]),
+      datasets: [{ data: catEntries.map(e => e[1]), backgroundColor: "#cf222e" }],
+    },
+    options: {
+      indexAxis: "y", responsive: true, animation: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true } },
+    },
+  });
+
+  // Diff
+  if (prev) {
+    const pt = prev.tests || {};
+    const ct = latest.tests || {};
+    const newFails = [], fixed = [];
+    for (const [name, t] of Object.entries(ct)) {
+      const po = (pt[name] || {}).outcome;
+      const co = t.outcome;
+      if ((co === "fail" || co === "error") && po === "pass") {
+        newFails.push({ name, category: t.category || "", message: t.message || "" });
+      } else if (co === "pass" && (po === "fail" || po === "error")) {
+        fixed.push({ name, previous_category: (pt[name] || {}).category || "" });
+      }
+    }
+    document.getElementById("new-fails-title").textContent = `New failures (${newFails.length})`;
+    document.getElementById("fixed-title").textContent = `Newly fixed (${fixed.length})`;
+    const nfBody = document.querySelector("#new-fails tbody");
+    newFails.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><code>${r.name}</code></td><td>${r.category}</td><td class="small">${r.message}</td>`;
+      nfBody.append(tr);
+    });
+    const fxBody = document.querySelector("#fixed tbody");
+    fixed.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><code>${r.name}</code></td><td>${r.previous_category}</td>`;
+      fxBody.append(tr);
+    });
+  } else {
+    document.getElementById("new-fails-title").textContent = "New failures (need ≥2 runs for diff)";
+    document.getElementById("fixed-title").textContent = "Newly fixed (need ≥2 runs for diff)";
+  }
+
+  // Per-test history
+  const allTests = new Set();
+  runs.forEach(r => Object.keys(r.tests || {}).forEach(n => allTests.add(n)));
+  const tests = [...allTests].sort();
+  const histBody = document.querySelector("#history tbody");
+  const render = (q) => {
+    histBody.innerHTML = "";
+    const ql = q.toLowerCase();
+    const matches = q ? tests.filter(t => t.toLowerCase().includes(ql)) : tests.slice(0, 200);
+    document.getElementById("filter-count").textContent = ` ${matches.length} matches`;
+    matches.slice(0, 500).forEach(name => {
+      const cells = runs.map(r => {
+        const t = (r.tests || {})[name];
+        if (!t) return "";
+        const cls = t.outcome === "pass" ? "pass" : t.outcome === "skip" ? "skip" : "fail";
+        return `<span class="badge ${cls}" title="${(t.message || "").replaceAll('"', '&quot;')}">${t.outcome[0]}</span>`;
+      }).join(" ");
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><code>${name}</code></td><td>${cells}</td>`;
+      histBody.append(tr);
+    });
+  };
+  document.getElementById("filter").addEventListener("input", e => render(e.target.value));
+  render("");
+}
+main();
+</script>
+</body>
+</html>
