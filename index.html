@@ -3,13 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>SCP × ceph/s3-tests — daily compatibility</title>
+<title>SCP — daily test dashboards</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
          margin: 0; padding: 20px 28px; background: #fafbfc; color: #1f2328; }
   h1, h2 { margin: 18px 0 8px; }
   .meta { color: #57606a; font-size: 13px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #d0d7de; margin: 18px 0 12px; }
+  .tab { padding: 8px 16px; cursor: pointer; user-select: none; border-radius: 6px 6px 0 0;
+         border: 1px solid transparent; border-bottom: none; color: #57606a; font-weight: 500; }
+  .tab.active { background: white; border-color: #d0d7de; color: #1f2328; }
+  .panel { display: none; }
+  .panel.active { display: block; }
   .kpis { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
   .kpi { background: white; border: 1px solid #d0d7de; border-radius: 8px;
          padding: 12px 16px; min-width: 140px; }
@@ -23,7 +29,9 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
   th { background: #f6f8fa; position: sticky; top: 0; }
-  input[type=text] { padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 4px; width: 320px; }
+  input[type=text], select { padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 4px; }
+  input[type=text] { width: 320px; }
+  .row { display: flex; gap: 12px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .badge.pass { background: #dafbe1; color: #1a7f37; }
   .badge.fail { background: #ffebe9; color: #cf222e; }
@@ -31,61 +39,118 @@
   .badge.error { background: #ffebe9; color: #cf222e; }
   .small { font-size: 12px; color: #57606a; }
   .scroll { max-height: 340px; overflow: auto; }
+  code { background: #f6f8fa; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
 </style>
 </head>
 <body>
-<h1>SCP × ceph/s3-tests — daily compatibility</h1>
+<h1>SCP — daily test dashboards</h1>
 <p class="meta">
   Endpoint: <code>object-store.kr-west1.e.samsungsdscloud.com</code> ·
-  Suite: <a href="https://github.com/ceph/s3-tests">ceph/s3-tests</a> ·
-  Generated <span id="gen-at">…</span> UTC.
+  Generated <span id="gen-at">…</span> UTC ·
+  Source: <a id="source-link" href="#">kyle-agent/scp-pkb-bench</a>
 </p>
 
-<div class="kpis" id="kpis"></div>
+<nav class="tabs">
+  <div class="tab active" data-tab="s3tests">S3 compatibility (ceph/s3-tests)</div>
+  <div class="tab" data-tab="pkb">PKB benchmarks</div>
+</nav>
 
-<h2>Daily counts</h2>
-<div class="card"><canvas id="ts" height="120"></canvas></div>
+<!-- ========== TAB: S3 TESTS ========== -->
+<section class="panel active" id="panel-s3tests">
+  <div class="kpis" id="s3-kpis"></div>
 
-<h2>Failure categories (latest run)</h2>
-<div class="card"><canvas id="cats" height="200"></canvas></div>
+  <h2>Daily counts</h2>
+  <div class="card"><canvas id="s3-ts" height="120"></canvas></div>
 
-<h2>Diff vs previous run</h2>
-<div class="grid">
+  <h2>Failure categories (latest run)</h2>
+  <div class="card"><canvas id="s3-cats" height="240"></canvas></div>
+
+  <h2>Diff vs previous run</h2>
+  <div class="grid">
+    <div class="card">
+      <strong id="new-fails-title">New failures</strong>
+      <div class="scroll"><table id="new-fails"><thead><tr><th>test</th><th>category</th><th>message</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <strong id="fixed-title">Newly fixed</strong>
+      <div class="scroll"><table id="fixed"><thead><tr><th>test</th><th>previous category</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <h2>Per-test history</h2>
   <div class="card">
-    <strong id="new-fails-title">New failures</strong>
-    <div class="scroll"><table id="new-fails"><thead><tr><th>test</th><th>category</th><th>message</th></tr></thead><tbody></tbody></table></div>
+    <input type="text" id="filter" placeholder="Filter test name…" />
+    <span class="small" id="filter-count"></span>
+    <div class="scroll">
+      <table id="history"><thead><tr><th>test</th><th>history (oldest → newest)</th></tr></thead><tbody></tbody></table>
+    </div>
   </div>
+</section>
+
+<!-- ========== TAB: PKB ========== -->
+<section class="panel" id="panel-pkb">
+  <div class="kpis" id="pkb-kpis"></div>
+
+  <h2>Metric over cycles</h2>
   <div class="card">
-    <strong id="fixed-title">Newly fixed</strong>
-    <div class="scroll"><table id="fixed"><thead><tr><th>test</th><th>previous category</th></tr></thead><tbody></tbody></table></div>
+    <div class="row">
+      <label>Benchmark <select id="pkb-bench"></select></label>
+      <label>Metric <select id="pkb-metric"></select></label>
+      <span class="small" id="pkb-metric-unit"></span>
+    </div>
+    <canvas id="pkb-chart" height="120"></canvas>
   </div>
-</div>
 
-<h2>Per-test history</h2>
-<div class="card">
-  <input type="text" id="filter" placeholder="Filter test name…" />
-  <span class="small" id="filter-count"></span>
-  <div class="scroll">
-    <table id="history"><thead><tr><th>test</th><th>history (oldest → newest)</th></tr></thead><tbody></tbody></table>
+  <h2>Cycles</h2>
+  <div class="card scroll" id="pkb-cycles-card">
+    <table id="pkb-cycles"><thead><tr><th>date</th><th>cycle</th><th>benchmarks</th></tr></thead><tbody></tbody></table>
   </div>
-</div>
 
-<p class="meta" style="margin-top: 28px;">
-  Source: <a id="source-link" href="#">kyle-agent/scp-pkb-bench</a> (private). Page auto-built daily.
-</p>
+  <h2>Latest cycle — all metrics</h2>
+  <div class="card scroll" id="pkb-latest-card">
+    <table id="pkb-latest"><thead><tr><th>benchmark</th><th>metric</th><th>value</th><th>unit</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
 
 <script>
+function fmtNum(n) {
+  if (typeof n !== "number") return String(n);
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return n.toExponential(2);
+  if (abs >= 100) return n.toFixed(0);
+  if (abs >= 1) return n.toFixed(2);
+  return n.toPrecision(3);
+}
+
 async function main() {
   const data = await fetch("data.json").then(r => r.json());
-  const runs = data.runs;
   document.getElementById("gen-at").textContent = data.generated_at;
   if (data.source_url) document.getElementById("source-link").href = data.source_url;
 
+  // Tabs
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      document.getElementById("panel-" + t.dataset.tab).classList.add("active");
+    });
+  });
+
+  renderS3(data.s3_tests || {runs: []});
+  renderPKB(data.pkb || {cycles: [], metric_index: {}});
+}
+
+function renderS3(s3) {
+  const runs = s3.runs || [];
+  const kpiHost = document.getElementById("s3-kpis");
+  if (!runs.length) {
+    kpiHost.innerHTML = '<div class="kpi"><div class="v">—</div><div class="l">No runs yet</div></div>';
+    return;
+  }
   const latest = runs[runs.length - 1];
   const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
 
-  // KPIs
-  const kpiHost = document.getElementById("kpis");
   const kpi = (label, val, cls = "") => {
     const d = document.createElement("div"); d.className = "kpi";
     d.innerHTML = `<div class="v ${cls}">${val}</div><div class="l">${label}</div>`;
@@ -100,12 +165,10 @@ async function main() {
     kpi("Pass %", ((latest.passed * 100) / latest.total).toFixed(1) + "%"),
   );
 
-  // Time series
-  const labels = runs.map(r => r.date);
-  new Chart(document.getElementById("ts"), {
+  new Chart(document.getElementById("s3-ts"), {
     type: "line",
     data: {
-      labels,
+      labels: runs.map(r => r.date),
       datasets: [
         { label: "passed", data: runs.map(r => r.passed), borderColor: "#1a7f37", tension: .2 },
         { label: "failed", data: runs.map(r => r.failed), borderColor: "#cf222e", tension: .2 },
@@ -115,10 +178,9 @@ async function main() {
     options: { responsive: true, animation: false },
   });
 
-  // Categories
   const cats = latest.categories || {};
   const catEntries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
-  new Chart(document.getElementById("cats"), {
+  new Chart(document.getElementById("s3-cats"), {
     type: "bar",
     data: {
       labels: catEntries.map(e => e[0]),
@@ -131,7 +193,6 @@ async function main() {
     },
   });
 
-  // Diff
   if (prev) {
     const pt = prev.tests || {};
     const ct = latest.tests || {};
@@ -164,7 +225,6 @@ async function main() {
     document.getElementById("fixed-title").textContent = "Newly fixed (need ≥2 runs for diff)";
   }
 
-  // Per-test history
   const allTests = new Set();
   runs.forEach(r => Object.keys(r.tests || {}).forEach(n => allTests.add(n)));
   const tests = [...allTests].sort();
@@ -189,6 +249,105 @@ async function main() {
   document.getElementById("filter").addEventListener("input", e => render(e.target.value));
   render("");
 }
+
+let pkbChart = null;
+
+function renderPKB(pkb) {
+  const cycles = pkb.cycles || [];
+  const metricIndex = pkb.metric_index || {};
+  const kpiHost = document.getElementById("pkb-kpis");
+  if (!cycles.length) {
+    kpiHost.innerHTML = '<div class="kpi"><div class="v">—</div><div class="l">No PKB cycles yet</div></div>';
+    return;
+  }
+  const latest = cycles[cycles.length - 1];
+
+  const kpi = (label, val, cls = "") => {
+    const d = document.createElement("div"); d.className = "kpi";
+    d.innerHTML = `<div class="v ${cls}">${val}</div><div class="l">${label}</div>`;
+    return d;
+  };
+  kpiHost.append(
+    kpi("Latest date", latest.date),
+    kpi("Latest cycle", latest.cycle),
+    kpi("Cycles", cycles.length),
+    kpi("Latest benchmarks", Object.keys(latest.benchmarks || {}).length),
+  );
+
+  // Benchmark + metric selectors
+  const benchSel = document.getElementById("pkb-bench");
+  const metricSel = document.getElementById("pkb-metric");
+  const unitLabel = document.getElementById("pkb-metric-unit");
+  const benches = Object.keys(metricIndex).sort();
+  benches.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b; o.textContent = b;
+    benchSel.append(o);
+  });
+
+  function populateMetrics(bench) {
+    metricSel.innerHTML = "";
+    const metrics = Object.keys(metricIndex[bench] || {}).sort();
+    metrics.forEach(m => {
+      const o = document.createElement("option");
+      o.value = m; o.textContent = m;
+      metricSel.append(o);
+    });
+  }
+
+  function updateChart() {
+    const bench = benchSel.value;
+    const metric = metricSel.value;
+    const unit = (metricIndex[bench] || {})[metric] || "";
+    unitLabel.textContent = unit ? `(${unit})` : "";
+    const points = cycles.map(c => {
+      const v = ((c.benchmarks || {})[bench] || {})[metric];
+      return v ? v.value : null;
+    });
+    if (pkbChart) pkbChart.destroy();
+    pkbChart = new Chart(document.getElementById("pkb-chart"), {
+      type: "line",
+      data: {
+        labels: cycles.map(c => `${c.date} ${c.cycle.replace("pkb-bench-", "")}`),
+        datasets: [{
+          label: `${bench} · ${metric}${unit ? " (" + unit + ")" : ""}`,
+          data: points,
+          borderColor: "#0969da",
+          backgroundColor: "rgba(9,105,218,.1)",
+          tension: .2, spanGaps: true,
+        }],
+      },
+      options: { responsive: true, animation: false },
+    });
+  }
+
+  if (benches.length) {
+    populateMetrics(benches[0]);
+    benchSel.addEventListener("change", () => { populateMetrics(benchSel.value); updateChart(); });
+    metricSel.addEventListener("change", updateChart);
+    updateChart();
+  }
+
+  // Cycles table
+  const cyclesBody = document.querySelector("#pkb-cycles tbody");
+  cycles.slice().reverse().forEach(c => {
+    const tr = document.createElement("tr");
+    const names = Object.keys(c.benchmarks || {}).join(", ");
+    tr.innerHTML = `<td>${c.date}</td><td><code>${c.cycle}</code></td><td class="small">${names}</td>`;
+    cyclesBody.append(tr);
+  });
+
+  // Latest cycle metrics
+  const latestBody = document.querySelector("#pkb-latest tbody");
+  for (const [bench, metrics] of Object.entries(latest.benchmarks || {})) {
+    for (const [m, info] of Object.entries(metrics)) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${bench}</td><td><code>${m}</code></td><td>${fmtNum(info.value)}</td><td>${info.unit}</td>`;
+      latestBody.append(tr);
+    }
+  }
+}
+
 main();
 </script>
 </body>
